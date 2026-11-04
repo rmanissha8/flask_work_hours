@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Work Hours Tracker</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#687386; --line:#e4e8ef; --bg:#f5f7fb; --accent:#3759d7; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
+    .wrap { max-width:1100px; margin:0 auto; padding:32px 18px 56px; }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:24px; }
+    h1 { margin:0 0 8px; font-size:clamp(1.7rem,4vw,2.25rem); letter-spacing:-.04em; }
+    p { color:var(--muted); margin:0; line-height:1.5; }
+    .panel { background:white; border:1px solid var(--line); border-radius:18px; padding:22px; box-shadow:0 8px 28px #17203308; margin-bottom:20px; }
+    .panel h2 { font-size:1.08rem; margin:0 0 18px; }
+    .form-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    label { display:block; font-size:.86rem; font-weight:650; margin-bottom:7px; }
+    input { width:100%; min-width:0; border:1px solid #d6dce7; border-radius:10px; padding:12px; font:inherit; background:white; color:var(--ink); }
+    input:focus { outline:3px solid #3759d725; border-color:var(--accent); }
+    .form-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:18px; flex-wrap:wrap; }
+    .hint { font-size:.82rem; color:var(--muted); }
+    button,.button { display:inline-flex; justify-content:center; align-items:center; border:0; border-radius:10px; padding:11px 15px; font:inherit; font-weight:650; cursor:pointer; text-decoration:none; }
+    .primary { background:var(--accent); color:white; }
+    .secondary { color:var(--ink); background:#eef1f7; }
+    .danger { background:#fff0f0; color:#a52b32; padding:7px 10px; font-size:.82rem; }
+    .stats { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:14px; margin-bottom:20px; }
+    .stat { background:white; border:1px solid var(--line); border-radius:16px; padding:18px; }
+    .stat .label { color:var(--muted); font-size:.84rem; margin-bottom:9px; }
+    .stat .value { font-size:clamp(1.4rem,3vw,1.9rem); font-weight:750; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+    .stat small { display:block; color:var(--muted); margin-top:5px; }
+    .table-head { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+    .table-head h2 { margin:0; }
+    .table-scroll { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; white-space:nowrap; font-size:.9rem; }
+    th { text-align:left; font-size:.76rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); background:#f8f9fc; }
+    th,td { padding:13px 12px; border-bottom:1px solid var(--line); }
+    tbody tr:last-child td { border-bottom:0; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; font-size:.76rem; font-weight:700; }
+    .weekday { background:#edf2ff; color:#3152b9; }
+    .weekend { background:#fff1dc; color:#945b09; }
+    .ot { font-weight:750; color:#a55312; }
+    .empty { text-align:center; padding:36px 12px; color:var(--muted); }
+    .flash { padding:12px 14px; border-radius:10px; margin-bottom:14px; font-size:.9rem; }
+    .flash.success { background:#eaf8ef; color:#20643a; }
+    .flash.error { background:#fff0f0; color:#a52b32; }
+    footer { color:var(--muted); font-size:.82rem; line-height:1.6; margin-top:18px; }
+    @media(min-width:651px) and (max-width:950px) { .stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media(max-width:650px) { .wrap { padding:22px 12px 40px; } header { display:block; } header .button { margin-top:16px; } .form-grid { grid-template-columns:1fr; } .stats { grid-template-columns:1fr; gap:10px; } .stat { padding:15px; } .panel { padding:16px; } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Work Hours</h1>
+      <p>{{ month_name }} {{ year }} · Attendance, overtime and shortfall tracker</p>
+    </div>
+    <a class="button secondary" href="{{ url_for('export_csv', month=selected_month) }}">Export month CSV ↓</a>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <section class="panel" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <a class="button secondary" href="{{ url_for('index', month=previous_month) }}">← Previous</a>
+    <form method="get" action="{{ url_for('index') }}" style="display:flex;align-items:center;gap:10px">
+      <label for="month" style="margin:0">View month</label>
+      <input type="month" id="month" name="month" value="{{ selected_month }}" onchange="this.form.submit()">
+      <button type="submit" class="secondary">Go</button>
+    </form>
+    <a class="button secondary" href="{{ url_for('index', month=next_month) }}">Next →</a>
+  </section>
+
+  <section class="panel">
+    <h2>Add or update a workday</h2>
+    <form action="{{ url_for('add_record') }}" method="post">
+      <input type="hidden" name="month" value="{{ selected_month }}">
+      <div class="form-grid">
+        <div>
+          <label for="date">Date</label>
+          <input id="date" name="date" type="date" value="{{ default_date }}" required>
+        </div>
+        <div>
+          <label for="time_in">Time in</label>
+          <input id="time_in" name="time_in" type="time" required>
+        </div>
+        <div>
+          <label for="time_out">Time out</label>
+          <input id="time_out" name="time_out" type="time" required>
+        </div>
+      </div>
+      <div class="form-actions">
+        <span class="hint">Weekdays: 8-hour standard · Weekends: 5-hour standard</span>
+        <button class="primary" type="submit">Save workday</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="stats">
+    <div class="stat">
+      <div class="label">Days recorded</div>
+      <div class="value">{{ records|length }}</div>
+      <small>Saved workdays</small>
+    </div>
+    <div class="stat">
+      <div class="label">Total hours worked</div>
+      <div class="value">{{ hhmm(total_worked) }}</div>
+      <small>{{ "%.2f"|format(total_worked / 60) }} hours in decimal</small>
+    </div>
+    <div class="stat">
+      <div class="label">Total overtime</div>
+      <div class="value">{{ hhmm(total_ot) }}</div>
+      <small>{{ total_ot }} overtime minutes</small>
+    </div>
+    <div class="stat">
+      <div class="label">Total shortfall</div>
+      <div class="value" style="color:#b33737">{{ hhmm(total_shortfall) }}</div>
+      <small>Below standard shift hours</small>
+    </div>
+    <div class="stat">
+      <div class="label">Net overtime balance</div>
+      <div class="value">{{ hhmm(net_balance) }}</div>
+      <small>Overtime minus shortfall</small>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="table-head">
+      <h2>Attendance records</h2>
+      <span class="hint">Saving an existing date updates that entry.</span>
+    </div>
+    {% if records %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Day</th><th>Shift</th><th>Time in</th><th>Time out</th>
+          <th>Worked</th><th>Standard</th><th>OT minutes</th><th>OT (HH:MM)</th><th>Shortfall (HH:MM)</th><th>Net balance</th><th></th>
+        </tr></thead>
+        <tbody>
+        {% for r in records %}
+          <tr>
+            <td>{{ r.date }}</td>
+            <td>{{ r.day_name }}</td>
+            <td><span class="pill {{ 'weekend' if r.shift_type == 'Weekend' else 'weekday' }}">{{ r.shift_type }}</span></td>
+            <td>{{ r.time_in }}</td>
+            <td>{{ r.time_out }}</td>
+            <td><strong>{{ r.worked_hhmm }}</strong></td>
+            <td>{{ r.standard_hours }}h</td>
+            <td class="{{ 'ot' if r.overtime_minutes > 0 else '' }}">{{ r.overtime_minutes }}</td>
+            <td>{{ r.overtime_hhmm }}</td>
+            <td style="color:#b33737;font-weight:700">{{ r.shortfall_hhmm }}</td>
+            <td>{{ hhmm(r.balance_minutes) }}</td>
+            <td>
+              <form action="{{ url_for('delete_record', date_text=r.date) }}" method="post" onsubmit="return confirm('Delete this attendance entry?')">
+                <button class="danger" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="empty">No attendance entries yet. Add your first workday above.</div>
+    {% endif %}
+  </section>
+
+  <footer>
+    Hours are calculated from Time In to Time Out, including overnight shifts. This version does not deduct unpaid breaks.
+    Overtime is the time above the standard shift; shortfall is time below it. Net balance is overtime minus shortfall. Only saved days count toward monthly totals.
+    Records are stored locally in <code>attendance.json</code>.
+  </footer>
+</div>
+</body>
+</html>
